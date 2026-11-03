@@ -1,0 +1,9 @@
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
+# shellcheck disable=SC1091
+
+. /app/nordvpn-lib.sh
+nordvpn_enabled || exit 0
+tunnel_down
+write_status stopped ""
+log "Tunnel down (kill switch stays active until the container stops)"

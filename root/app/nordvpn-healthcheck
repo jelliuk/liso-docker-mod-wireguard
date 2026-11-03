@@ -1,0 +1,20 @@
+#!/bin/bash
+# shellcheck shell=bash
+# shellcheck disable=SC1091
+# Docker HEALTHCHECK: healthy only while the NordVPN tunnel is connected and passing traffic.
+
+. /app/nordvpn-lib.sh
+
+# not in NordVPN mode (server mode / plain client): nothing to judge
+nordvpn_enabled || exit 0
+
+state=$(sed -n 's/^state=//p' "${NORDVPN_RUN_DIR}/status" 2> /dev/null)
+[[ "${state}" == "connected" ]] || exit 1
+ip link show dev "${NORDVPN_IFACE}" > /dev/null 2>&1 || exit 1
+handshake_age > /dev/null || exit 1
+
+# one cheap end-to-end probe through the tunnel
+for url in ${NORDVPN_CHECK_URLS}; do
+    curl -fsS -o /dev/null --max-time 5 "${url}" 2> /dev/null && exit 0
+done
+exit 1

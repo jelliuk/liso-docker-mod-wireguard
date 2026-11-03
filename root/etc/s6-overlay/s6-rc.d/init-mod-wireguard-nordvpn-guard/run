@@ -1,0 +1,31 @@
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
+# Makes the stock svc-wireguard step aside when NordVPN mode is active. Without this it would run
+# `ip route del default` (no confs in /config/wg_confs), which breaks the uplink the tunnel needs.
+# Patches at runtime instead of overwriting the file so upstream changes to it are preserved.
+
+TARGET=/etc/s6-overlay/s6-rc.d/svc-wireguard/run
+MARKER="# nordvpn-mod-guard"
+
+if [[ ! -f "${TARGET}" ]]; then
+    echo "**** [nordvpn-mod] ${TARGET} not found, is this the linuxserver/wireguard image? Mod not applied. ****"
+    exit 0
+fi
+if grep -q "${MARKER}" "${TARGET}"; then
+    exit 0
+fi
+if ! grep -q '^unset WG_CONFS' "${TARGET}"; then
+    echo "**** [nordvpn-mod] Anchor line not found in ${TARGET} (upstream changed?). Guard NOT applied: svc-wireguard may delete the default route. ****"
+    exit 0
+fi
+
+sed -i '/^unset WG_CONFS/i \
+'"${MARKER}"'\
+# shellcheck disable=SC1091\
+. /app/nordvpn-lib.sh\
+if nordvpn_enabled; then\
+    echo "**** NordVPN mode active, tunnel is managed by svc-mod-wireguard-nordvpn ****"\
+    exit 0\
+fi\
+' "${TARGET}"
+echo "**** [nordvpn-mod] svc-wireguard guard applied ****"

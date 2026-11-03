@@ -1,0 +1,115 @@
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
+# shellcheck disable=SC1091
+
+# NordVPN supervisor: connects using the confs in /nordvpn, re-checks health every
+# NORDVPN_CHECK_INTERVAL seconds, reconnects on failure and moves on to the next conf
+# when the current one cannot be revived.
+
+. /app/nordvpn-lib.sh
+
+if ! nordvpn_enabled; then
+    log "NordVPN mode not active (no ${NORDVPN_DIR}/*.conf, PEERS is set, or NORDVPN_ENABLED=false)"
+    exec sleep infinity
+fi
+
+trap 'exit 0' TERM INT # svc-nordvpn/finish tears the tunnel down
+
+# sleep that can be interrupted by the trap
+nap() {
+    sleep "$1" &
+    wait $!
+}
+
+# reload CONFS[], keeping IDX pointed at the conf named $1 (or clamped if it vanished)
+refresh_confs() {
+    local name="$1" i
+    load_confs
+    if ((${#CONFS[@]} == 0)); then
+        IDX=0
+        return 1
+    fi
+    if [[ -n "${name}" ]] && i=$(conf_index "${name}"); then
+        IDX=${i}
+    else
+        IDX=$((IDX % ${#CONFS[@]}))
+    fi
+    return 0
+}
+
+# try every conf once, starting at IDX; on success IDX is the working conf
+connect_any() {
+    local tried=0 n=${#CONFS[@]}
+    while ((tried < n)); do
+        local conf="${CONFS[${IDX}]}"
+        write_status connecting "${conf##*/}"
+        log "Connecting with ${conf##*/} ($((IDX + 1))/${n})"
+        if tunnel_up "${conf}"; then
+            state_set_last "${conf##*/}"
+            write_status connected "${conf##*/}"
+            log "Connected using ${conf##*/}"
+            log_exit_info
+            return 0
+        fi
+        IDX=$(((IDX + 1) % n))
+        tried=$((tried + 1))
+    done
+    return 1
+}
+
+tunnel_down # clear any leftovers from a previous run
+capture_uplink
+setup_killswitch
+
+IDX=0
+load_confs
+if [[ "${NORDVPN_START_FROM_LAST,,}" != "false" ]] && last=$(state_get_last) && [[ -n "${last}" ]] && i=$(conf_index "${last}"); then
+    IDX=${i}
+    log "Resuming with last working conf ${last}"
+fi
+
+while true; do
+    if ! refresh_confs ""; then
+        write_status no-config ""
+        log "No valid *.conf files in ${NORDVPN_DIR}, checking again in ${NORDVPN_RETRY_DELAY}s"
+        nap "${NORDVPN_RETRY_DELAY}"
+        continue
+    fi
+
+    if ! connect_any; then
+        write_status failed ""
+        log "No conf produced a working connection, retrying in ${NORDVPN_RETRY_DELAY}s (kill switch keeps traffic blocked)"
+        nap "${NORDVPN_RETRY_DELAY}"
+        continue
+    fi
+
+    # connected: monitor until the current conf stops working
+    while true; do
+        nap "${NORDVPN_CHECK_INTERVAL}"
+        current="${CONFS[${IDX}]##*/}"
+        refresh_confs "${current}" || break
+        if [[ "${CONFS[${IDX}]##*/}" != "${current}" ]]; then
+            log "Active conf ${current} was removed from ${NORDVPN_DIR}, switching"
+            tunnel_down
+            break
+        fi
+        if tunnel_healthy; then
+            write_status connected "${current}"
+            log "Health check OK (${current})"
+            continue
+        fi
+        log "Health check FAILED on ${current}, reconnecting"
+        write_status reconnecting "${current}"
+        tunnel_down
+        if tunnel_up "${CONFS[${IDX}]}"; then
+            write_status connected "${current}"
+            log "Reconnected using ${current}"
+            log_exit_info
+            continue
+        fi
+        tunnel_down
+        IDX=$(((IDX + 1) % ${#CONFS[@]}))
+        log "Reconnect failed, moving on to ${CONFS[${IDX}]##*/}"
+        break
+    done
+done
