@@ -41,6 +41,36 @@ Each NordVPN conf contains a private key: mount in your container `/nordvpn` as 
       retries: 3
 ```
 
+### Example Docker Compose
+```
+services:
+  wireguard-nord:
+    image: lscr.io/linuxserver/wireguard:latest
+    container_name: wireguard-nord
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/nordvpn-healthcheck"]
+      interval: 30s
+      timeout: 15s
+      start_period: 120s
+      retries: 3
+    cap_add:
+      - NET_ADMIN # required
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1 # required
+      - net.ipv6.conf.all.disable_ipv6=1 # recommended
+    networks:
+      # Define your network here
+    ports:
+      # Include your ports here
+    volumes:
+      - ./nordvpn:/nordvpn:ro
+      - ./config:/config
+    environment:
+      # Define any environment variables here
+      - DOCKER_MODS=ghcr.io/jelliuk/docker-mod-wireguard-nordvpn:latest
+```
+
 ## Maintenance Note
 An init script (`init-mod-wireguard-nordvpn-guard`) patches `svc-wireguard/run` at startup so the stock
 service steps aside in NordVPN mode (it would otherwise delete the default route). If upstream changes
