@@ -4,5 +4,6 @@ FROM scratch
 
 LABEL maintainer="jelliuk"
 
-# copy local files
-COPY root/ /
+# --chmod makes the s6 run/finish scripts executable even if git lost the exec bit
+# (Windows checkouts, web uploads, some editors)
+COPY --chmod=755 root/ /
