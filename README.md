@@ -25,13 +25,13 @@ A Docker Mod for [linuxserver/wireguard](https://github.com/linuxserver/docker-w
 | `NORDVPN_START_FROM_LAST` | `true` | resume with last working conf |
 | `NET_LOCAL` | | LAN CIDRs routed outside the tunnel (comma/space separated) |
 
-Container requirements: `NET_ADMIN` and `net.ipv4.conf.all.src_valid_mark=1`.
-Each NordVPN conf contains a private key: mount in your container `/nordvpn` as read-only and keep it out of public repos, etc.
-
 ## Install Process
 1. Use `lscr.io/linuxserver/wireguard`
 2. Set `DOCKER_MODS=ghcr.io/jelliuk/liso-docker-mod-wireguard:latest`
-3. Include Healthcheck in your `docker-compose.yml`.
+3. Put one or more NordVPN WireGuard files (`ch368-nordvpn.conf`, `uk2-nordvpn.conf`, ...) in the directory mounted at `/nordvpn`.
+   Each NordVPN conf contains a private key: mount in your container `/nordvpn` as read-only and keep it out of publicly accessible locations, etc.
+4. Include Healthcheck in your `docker-compose.yml` if you wish, this cannot be implemented via the mod environment variable alone.
+
 ```
       healthcheck: # a mod cannot ship a HEALTHCHECK, so it is declared here
       test: ["CMD", "/app/nordvpn-healthcheck"]
@@ -71,7 +71,14 @@ services:
       - DOCKER_MODS=ghcr.io/jelliuk/docker-mod-wireguard-nordvpn:latest
 ```
 
+### Why these settings?
+Container requirements and recommendations: `NET_ADMIN`, `net.ipv4.conf.all.src_valid_mark=1` and `net.ipv6.conf.all.disable_ipv6=1`.
+
+| Setting | Why |
+|---|---|
+| `cap_add: NET_ADMIN` | **Required.** Docker drops this capability by default. WireGuard needs it to create the tunnel interface, set routes and apply the kill-switch firewall rules. |
+| `net.ipv4.conf.all.src_valid_mark=1` | **Required.** With a full tunnel (`AllowedIPs = 0.0.0.0/0`), `wg-quick` marks WireGuard's own packets so they bypass the tunnel. This sysctl lets the kernel accept replies to those marked packets. `wg-quick` can't set it from inside a container (`/proc/sys` is read-only), so it must be set here. |
+| `net.ipv6.conf.all.disable_ipv6=1` | **Recommended.** NordVPN's configs tunnel IPv4 only, so IPv6 traffic would bypass the VPN and expose your real IP. Disabling IPv6 closes that leak. |
+
 ## Maintenance Note
-An init script (`init-mod-wireguard-nordvpn-guard`) patches `svc-wireguard/run` at startup so the stock
-service steps aside in NordVPN mode (it would otherwise delete the default route). If upstream changes
-that file and the anchor line is missing, the container log says so.
+An init script (`init-mod-wireguard-nordvpn-guard`) patches `svc-wireguard/run` at startup so the stock service steps aside in NordVPN mode (it would otherwise delete the default route). If upstream changes that file and the anchor line is missing, the container log says so.
