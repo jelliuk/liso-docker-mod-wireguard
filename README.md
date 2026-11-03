@@ -25,6 +25,18 @@ A Docker Mod for [linuxserver/wireguard](https://github.com/linuxserver/docker-w
 | `NORDVPN_START_FROM_LAST` | `true` | resume with last working conf |
 | `NET_LOCAL` | | LAN CIDRs routed outside the tunnel (comma/space separated) |
 
+### Local network access (`NET_LOCAL`)
+`NET_LOCAL` is specific to this mod. Upstream `linuxserver/wireguard` has no equivalent variable; it only documents a manual, unsupported `PostUp`/`PreDown` workaround in the tunnel conf.
+
+| Setting | Why |
+|---|---|
+| `NET_LOCAL=192.168.0.0/24` | **Recommended.** Set this to your LAN range (comma or space separated for several). Once the tunnel is up, all traffic is routed through the VPN, so replies to devices on your LAN (such as your browser opening the qBittorrent WebUI) would disappear into the tunnel. The mod routes these ranges via the original Docker gateway instead and exempts them from the kill switch. |
+
+- **Automatic:** the Docker network the container sits on is always allowed, so access from the Docker host or other containers works without it.
+- **When it's optional:** if you only do not require direct access from your lan or other subnets to services associated to the wireguard tunnel.
+- **Do not combine:** don't also add any upstream `PostUp`/`PreDown` workaround to your NordVPN confs. It would duplicate the routes and firewall rules.
+- **Rotation:** the setting is applied on every connect, so it carries over when the mod switches to another conf.
+
 ## Install Process
 1. Use `lscr.io/linuxserver/wireguard`
 2. Set `DOCKER_MODS=ghcr.io/jelliuk/liso-docker-mod-wireguard:latest`
