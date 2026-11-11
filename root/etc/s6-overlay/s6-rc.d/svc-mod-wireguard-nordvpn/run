@@ -60,6 +60,7 @@ connect_any() {
 tunnel_down # clear any leftovers from a previous run
 capture_uplink
 setup_killswitch
+[[ -n "${NORDVPN_DNS// /}" ]] && log "DNS override active: ${NORDVPN_DNS}"
 
 IDX=0
 load_confs

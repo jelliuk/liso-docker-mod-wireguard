@@ -21,6 +21,7 @@ A Docker Mod for [linuxserver/wireguard](https://github.com/linuxserver/docker-w
 | `NORDVPN_MAX_HANDSHAKE_AGE` | `180` | max handshake age (s) for "healthy" |
 | `NORDVPN_CHECK_URLS` | NordVPN insights + 1.1.1.1 trace | probed through the tunnel |
 | `NORDVPN_KILLSWITCH` | `true` | block non-VPN egress |
+| `NORDVPN_DNS` | | override the `DNS =` line of every conf, e.g. `1.1.1.1,9.9.9.9`. Queries go through the tunnel. Use this if NordVPN's resolvers give bad answers |
 | `NORDVPN_BOOTSTRAP_DNS` | `true` | allow port 53 while the tunnel is down (resolves Endpoint hostnames) |
 | `NORDVPN_START_FROM_LAST` | `true` | resume with last working conf |
 | `NET_LOCAL` | | LAN CIDRs routed outside the tunnel (comma/space separated) |

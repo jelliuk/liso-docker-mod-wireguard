@@ -15,6 +15,8 @@ NORDVPN_CHECK_URLS="${NORDVPN_CHECK_URLS:-https://api.nordvpn.com/v1/helpers/ips
 NORDVPN_KILLSWITCH="${NORDVPN_KILLSWITCH:-true}"
 NORDVPN_BOOTSTRAP_DNS="${NORDVPN_BOOTSTRAP_DNS:-true}"
 NORDVPN_START_FROM_LAST="${NORDVPN_START_FROM_LAST:-true}"
+# optional DNS override (comma or space separated), replaces the DNS= line of every conf
+NORDVPN_DNS="${NORDVPN_DNS:-}"
 
 log() {
     echo "**** [nordvpn] $* ****"
@@ -156,10 +158,25 @@ setup_killswitch() {
 
 # ---- tunnel lifecycle -------------------------------------------------------
 
+# rewrites the DNS= line of [Interface] when NORDVPN_DNS is set, otherwise passes through
+apply_dns_override() {
+    if [[ -z "${NORDVPN_DNS// /}" ]]; then
+        cat
+        return
+    fi
+    local dns="${NORDVPN_DNS//,/ }"
+    dns="$(echo ${dns} | tr -s ' ' ',')"
+    awk -v dns="${dns}" '
+        tolower($0) ~ /^[ \t]*dns[ \t]*=/ { next }
+        { print }
+        tolower($0) ~ /^[ \t]*\[interface\]/ && !done { print "DNS = " dns; done = 1 }
+    '
+}
+
 stage_conf() {
     local dst="${NORDVPN_RUN_DIR}/${NORDVPN_IFACE}.conf"
     mkdir -p "${NORDVPN_RUN_DIR}"
-    (umask 077 && tr -d '\r' < "$1" > "${dst}.new") && mv -f "${dst}.new" "${dst}"
+    (umask 077 && tr -d '\r' < "$1" | apply_dns_override > "${dst}.new") && mv -f "${dst}.new" "${dst}"
 }
 
 tunnel_down() {
